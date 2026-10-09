@@ -14,6 +14,7 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("simulate"), roundId: z.string().uuid(), count: z.number().int().min(1).max(200) }),
   z.object({ action: z.literal("locale"), locale: z.enum(LOCALES) }),
+  z.object({ action: z.literal("delete"), roundId: z.string().uuid() }),
 ]);
 
 const FAILURE_STATUS: Record<string, number> = {
@@ -50,7 +51,9 @@ export async function POST(request: NextRequest) {
           ? admin.client.rpc("admin_create_round", { p_label: input.label, p_is_rehearsal: input.isRehearsal })
           : input.action === "simulate"
             ? admin.client.rpc("admin_simulate_votes", { p_round_id: input.roundId, p_count: input.count })
-            : admin.client.rpc("admin_set_screen_locale", { p_locale: input.locale });
+            : input.action === "locale"
+              ? admin.client.rpc("admin_set_screen_locale", { p_locale: input.locale })
+              : admin.client.rpc("admin_delete_rehearsal_round", { p_round_id: input.roundId });
 
   const { data, error } = await call;
   if (error) {

@@ -339,4 +339,25 @@ test.describe("rounds and resilience", () => {
     await g.dispose();
     await screenCtx.close();
   });
+
+  test("a closed rehearsal round can be deleted from the console; production rounds cannot", async ({ page, baseURL }) => {
+    await loginAdmin(page);
+    const admin = adminApi(page, baseURL!);
+    const prod = (await (await page.request.get("/api/admin/rounds")).json()).rounds.find(
+      (r: Snapshot) => r.round && !r.round.isRehearsal,
+    );
+    if (prod) expect((await admin.post({ action: "delete", roundId: prod.round.id })).body.code).toBe("not_rehearsal");
+
+    const roundId = await admin.freshRound({ label: "E2E delete me" });
+    await admin.post({ action: "simulate", roundId, count: 5 });
+    await admin.post({ action: "close", roundId });
+    await page.reload();
+    await page.getByTestId("delete-round").click();
+    await expect(page.getByTestId("confirm-dialog")).toContainText("трајно избришани");
+    await page.getByTestId("confirm-yes").click();
+    await expect(page.getByTestId("admin-message")).toContainText("избришана");
+    await expect(page.getByTestId("round-label")).not.toHaveText("E2E delete me");
+    const rounds = (await (await page.request.get("/api/admin/rounds")).json()).rounds as Snapshot[];
+    expect(rounds.some((r) => r.round?.id === roundId)).toBe(false);
+  });
 });

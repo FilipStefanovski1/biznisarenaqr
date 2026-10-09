@@ -170,4 +170,32 @@ describe("vote integrity (database)", () => {
     await expect(query("select public.admin_set_screen_locale('en')")).rejects.toThrow(/admin privileges required/);
     await asAdmin("select public.admin_set_screen_locale('mk')");
   });
+
+  it("deletes rehearsal rounds (and their votes) but never production rounds", async () => {
+    const prodId = await query<string>("select id from voting.rounds where not is_rehearsal order by created_at limit 1");
+    expect((await asAdmin<Json>("select public.admin_delete_rehearsal_round($1)", [prodId])).code).toBe("not_rehearsal");
+
+    const rehearsal = await freshRehearsalRound();
+    await vote(rehearsal, randomUUID(), "yova");
+    expect((await asAdmin<Json>("select public.admin_delete_rehearsal_round($1)", [rehearsal])).code).toBe("round_open");
+    await asAdmin("select public.admin_close_round($1)", [rehearsal]);
+    const before = (await query<{ version: number }>("select public.get_public_state()")).version;
+
+    const res = await asAdmin<{ ok: boolean; deletedVotes: number; state: { version: number; round: { id: string } } }>(
+      "select public.admin_delete_rehearsal_round($1)",
+      [rehearsal],
+    );
+    expect(res.ok).toBe(true);
+    expect(res.deletedVotes).toBe(1);
+    expect(res.state.round.id).not.toBe(rehearsal); // public URLs moved to another round
+    expect(res.state.version).toBeGreaterThan(before);
+    expect(Number(await query("select count(*) from voting.rounds where id = $1", [rehearsal]))).toBe(0);
+    expect(await countVotes(rehearsal)).toBe(0);
+
+    // Outside the admin function the protections still hold, even for rehearsal rounds.
+    const other = await freshRehearsalRound();
+    await vote(other, randomUUID(), "yova");
+    await expect(pool.query("delete from voting.votes where round_id = $1", [other])).rejects.toThrow(/append-only/);
+    await expect(query("select public.admin_delete_rehearsal_round($1)", [other])).rejects.toThrow(/admin privileges required/);
+  });
 });

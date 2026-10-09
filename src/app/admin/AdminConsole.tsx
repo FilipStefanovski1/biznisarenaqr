@@ -7,13 +7,24 @@ import { LOCALES, LOCALE_NAMES } from "@/i18n/messages";
 import { computeStandings, formatCount, formatPercent } from "@/lib/results";
 import type { SiteUrlCheck } from "@/lib/site-url";
 import { parseSnapshot, type Snapshot } from "@/lib/snapshot";
-import { useLiveScoreboard, type ConnectionState } from "@/lib/use-live-scoreboard";
+import {
+  useLiveScoreboard,
+  type ConnectionState,
+} from "@/lib/use-live-scoreboard";
 
 type HistoryRound = Snapshot & { isActive: boolean };
-type Confirm = { kind: "close" } | { kind: "create"; label: string; isRehearsal: boolean } | null;
+type Confirm =
+  | { kind: "close" }
+  | { kind: "create"; label: string; isRehearsal: boolean }
+  | { kind: "delete"; roundId: string; label: string; isActive: boolean }
+  | null;
 
-async function fetchHistory(): Promise<HistoryRound[] | "unauthenticated" | null> {
-  const res = await fetch("/api/admin/rounds", { cache: "no-store" }).catch(() => null);
+async function fetchHistory(): Promise<
+  HistoryRound[] | "unauthenticated" | null
+> {
+  const res = await fetch("/api/admin/rounds", { cache: "no-store" }).catch(
+    () => null,
+  );
   if (!res) return null;
   if (res.status === 401) return "unauthenticated";
   if (!res.ok) return null;
@@ -21,18 +32,37 @@ async function fetchHistory(): Promise<HistoryRound[] | "unauthenticated" | null
   return body.rounds
     .map((r) => {
       const snap = parseSnapshot(r);
-      return snap ? { ...snap, isActive: Boolean((r as { isActive?: boolean }).isActive) } : null;
+      return snap
+        ? { ...snap, isActive: Boolean((r as { isActive?: boolean }).isActive) }
+        : null;
     })
     .filter((r): r is HistoryRound => r !== null);
 }
 
-const STATUS_LABEL = { waiting: "Чека", open: "Отворено", closed: "Затворено" } as const;
+const STATUS_LABEL = {
+  waiting: "Чека",
+  open: "Отворено",
+  closed: "Затворено",
+} as const;
 
-export function AdminConsole({ email, initial, site }: { email: string; initial: Snapshot | null; site: SiteUrlCheck }) {
-  const { snapshot, connection, offer, refresh } = useLiveScoreboard(initial, { reconcileMs: 10000 });
+export function AdminConsole({
+  email,
+  initial,
+  site,
+}: {
+  email: string;
+  initial: Snapshot | null;
+  site: SiteUrlCheck;
+}) {
+  const { snapshot, connection, offer, refresh } = useLiveScoreboard(initial, {
+    reconcileMs: 10000,
+  });
   const [history, setHistory] = useState<HistoryRound[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    tone: "ok" | "error";
+    text: string;
+  } | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [newLabel, setNewLabel] = useState("");
   const [newRehearsal, setNewRehearsal] = useState(false);
@@ -51,7 +81,10 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
     },
     [toLogin],
   );
-  const loadHistory = useCallback(async () => applyHistory(await fetchHistory()), [applyHistory]);
+  const loadHistory = useCallback(
+    async () => applyHistory(await fetchHistory()),
+    [applyHistory],
+  );
 
   // Refresh history when the round or its status changes (not on every vote).
   const historyKey = `${round?.id}:${round?.status}`;
@@ -75,7 +108,11 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
           toLogin();
           return;
         }
-        const body = (await res.json().catch(() => null)) as { ok?: boolean; code?: string; state?: unknown } | null;
+        const body = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          code?: string;
+          state?: unknown;
+        } | null;
         if (body?.state) offer(parseSnapshot(body.state));
         if (res.ok && body?.ok) {
           setMessage({ tone: "ok", text: success });
@@ -85,7 +122,10 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
         }
         void loadHistory();
       } catch {
-        setMessage({ tone: "error", text: "Нема врска со серверот. Проверете ја мрежата и обидете се повторно." });
+        setMessage({
+          tone: "error",
+          text: "Нема врска со серверот. Проверете ја мрежата и обидете се повторно.",
+        });
       } finally {
         busyRef.current = false;
         setBusy(null);
@@ -99,7 +139,12 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => void act({ action: "open", roundId: round.id }, "Гласањето е отворено.")}
+        onClick={() =>
+          void act(
+            { action: "open", roundId: round.id },
+            "Гласањето е отворено.",
+          )
+        }
         className="slab flex h-16 w-full items-center justify-center gap-3 bg-blue font-display text-[22px] font-bold tracking-[0.06em] text-navy uppercase transition-[filter] hover:brightness-105 disabled:opacity-50"
         data-testid="open-voting"
       >
@@ -120,6 +165,24 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
         <p className="flex-1 text-[15px] font-semibold text-ink-2">
           Резултатите се конечни и заклучени. Победникот е на LED екранот.
         </p>
+        {round.isRehearsal && (
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() =>
+              setConfirm({
+                kind: "delete",
+                roundId: round.id,
+                label: round.label,
+                isActive: true,
+              })
+            }
+            className="flex h-14 items-center rounded-[3px] px-5 font-display text-[18px] font-bold tracking-[0.06em] text-red-200 uppercase ring-1 ring-red-300/40 hover:bg-red-500/10 disabled:opacity-50"
+            data-testid="delete-round"
+          >
+            Избриши проба
+          </button>
+        )}
         <a
           href={`/api/admin/export?roundId=${round.id}`}
           className="slab flex h-14 items-center bg-mist px-6 font-display text-[18px] font-bold tracking-[0.06em] text-navy uppercase"
@@ -141,7 +204,9 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
           <Logo />
         </div>
         <span className="h-7 w-px bg-white/15" aria-hidden />
-        <span className="font-display text-[17px] font-bold tracking-[0.12em] uppercase">Контролна соба</span>
+        <span className="font-display text-[17px] font-bold tracking-[0.12em] uppercase">
+          Контролна соба
+        </span>
         <div className="ml-auto flex items-center gap-4 text-sm">
           <ConnectionPill connection={connection} />
           <span className="hidden text-ink-2 md:inline">{email}</span>
@@ -155,12 +220,17 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[1fr_380px]">
         {/* Stage: the live round */}
-        <main className="flex min-h-0 flex-col gap-6 p-6 lg:p-8" data-testid="current-round">
+        <main
+          className="flex min-h-0 flex-col gap-6 p-6 lg:p-8"
+          data-testid="current-round"
+        >
           {(site.error || site.warning) && (
             <div
               role="alert"
               className={`slab px-4 py-3 text-sm font-semibold ${
-                site.error ? "bg-red-500/15 text-red-200" : "bg-amber-400/10 text-amber-200"
+                site.error
+                  ? "bg-red-500/15 text-red-200"
+                  : "bg-amber-400/10 text-amber-200"
               }`}
             >
               {site.error ?? site.warning}
@@ -172,13 +242,17 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
             {round && (
               <span
                 className={`flex h-7 items-center px-2.5 font-display text-[13px] font-bold tracking-[0.14em] uppercase ring-1 ${
-                  round.isRehearsal ? "text-white ring-white/60" : "text-ink-2 ring-white/20"
+                  round.isRehearsal
+                    ? "text-white ring-white/60"
+                    : "text-ink-2 ring-white/20"
                 }`}
               >
                 {round.isRehearsal ? "Проба" : "Продукција"}
               </span>
             )}
-            <span className="ml-auto font-mono text-xs text-muted">{round ? `ID ${round.id.slice(0, 8)}` : ""}</span>
+            <span className="ml-auto font-mono text-xs text-muted">
+              {round ? `ID ${round.id.slice(0, 8)}` : ""}
+            </span>
           </div>
 
           <div className="flex items-end justify-between gap-6">
@@ -189,10 +263,15 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
               {round?.label ?? "Нема активна рунда"}
             </h1>
             <div className="shrink-0 text-right">
-              <div className="tabular font-display text-[64px] leading-none font-bold" data-testid="admin-total">
+              <div
+                className="tabular font-display text-[64px] leading-none font-bold"
+                data-testid="admin-total"
+              >
                 {formatCount(standings.total)}
               </div>
-              <div className="mt-1 text-sm font-semibold text-muted">прифатени гласови</div>
+              <div className="mt-1 text-sm font-semibold text-muted">
+                прифатени гласови
+              </div>
             </div>
           </div>
 
@@ -207,7 +286,9 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
                 <span style={{ background: row.color }} aria-hidden />
                 <div className="min-w-0 px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <span className="font-display text-[26px] leading-none font-extrabold uppercase">{row.name}</span>
+                    <span className="font-display text-[26px] leading-none font-extrabold uppercase">
+                      {row.name}
+                    </span>
                     {row.isLeader && (
                       <span className="bg-gold px-2 py-0.5 font-display text-[12px] font-extrabold tracking-[0.12em] text-navy uppercase">
                         {standings.isTie ? "Нерешено" : "Води"}
@@ -217,12 +298,17 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
                   <div className="mt-3 h-3 bg-white/[0.07]">
                     <div
                       className="h-full transition-[width] duration-700 ease-[var(--ease-broadcast)] motion-reduce:transition-none"
-                      style={{ width: `${row.percentage}%`, background: row.color }}
+                      style={{
+                        width: `${row.percentage}%`,
+                        background: row.color,
+                      }}
                     />
                   </div>
                 </div>
                 <div className="flex flex-col items-end justify-center border-l border-white/[0.06] px-6">
-                  <span className="tabular font-display text-[40px] leading-none font-bold">{formatCount(row.votes)}</span>
+                  <span className="tabular font-display text-[40px] leading-none font-bold">
+                    {formatCount(row.votes)}
+                  </span>
                   <span className="tabular font-display text-[16px] font-semibold text-ink-2">
                     {formatPercent(row.percentage)}
                   </span>
@@ -233,14 +319,24 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
 
           <div className="grid shrink-0 gap-3">
             {round?.isRehearsal && round.status === "open" && (
-              <div className="flex items-center gap-2" data-testid="simulate-panel">
-                <span className="mr-2 text-sm font-semibold text-ink-2">Пробни гласови (само тест на екранот)</span>
+              <div
+                className="flex items-center gap-2"
+                data-testid="simulate-panel"
+              >
+                <span className="mr-2 text-sm font-semibold text-ink-2">
+                  Пробни гласови (само тест на екранот)
+                </span>
                 {[1, 10, 50].map((n) => (
                   <button
                     key={n}
                     type="button"
                     disabled={busy !== null}
-                    onClick={() => void act({ action: "simulate", roundId: round.id, count: n }, `Додадени ${n} пробни гласови.`)}
+                    onClick={() =>
+                      void act(
+                        { action: "simulate", roundId: round.id, count: n },
+                        `Додадени ${n} пробни гласови.`,
+                      )
+                    }
                     className="h-9 rounded-[3px] px-3 font-display text-[15px] font-bold ring-1 ring-white/20 hover:bg-white/5 disabled:opacity-50"
                   >
                     +{n}
@@ -283,8 +379,14 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
               </a>
             </div>
             <div className="mt-4" data-testid="screen-language">
-              <p className="text-sm text-ink-2">Јазик на екранот (се менува веднаш)</p>
-              <div className="mt-2 grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Јазик на LED екранот">
+              <p className="text-sm text-ink-2">
+                Јазик на екранот (се менува веднаш)
+              </p>
+              <div
+                className="mt-2 grid grid-cols-5 gap-1.5"
+                role="radiogroup"
+                aria-label="Јазик на LED екранот"
+              >
                 {LOCALES.map((code) => {
                   const active = (snapshot?.screenLocale ?? "mk") === code;
                   return (
@@ -295,9 +397,17 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
                       aria-checked={active}
                       title={LOCALE_NAMES[code]}
                       disabled={busy !== null}
-                      onClick={() => !active && void act({ action: "locale", locale: code }, `LED екран: ${LOCALE_NAMES[code]}.`)}
+                      onClick={() =>
+                        !active &&
+                        void act(
+                          { action: "locale", locale: code },
+                          `LED екран: ${LOCALE_NAMES[code]}.`,
+                        )
+                      }
                       className={`h-10 rounded-[3px] font-display text-[15px] font-bold tracking-[0.08em] uppercase transition-colors ${
-                        active ? "bg-blue text-navy" : "text-ink-2 ring-1 ring-white/15 hover:bg-white/5 hover:text-white"
+                        active
+                          ? "bg-blue text-navy"
+                          : "text-ink-2 ring-1 ring-white/15 hover:bg-white/5 hover:text-white"
                       }`}
                       data-testid={`screen-locale-${code}`}
                     >
@@ -313,16 +423,29 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
             <RailSection title="QR код">
               <div className="flex gap-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/api/qr?format=svg" alt={`QR код за ${site.voteUrl}`} className="h-28 w-28 shrink-0 rounded-[3px] bg-white" />
+                <img
+                  src="/api/qr?format=svg"
+                  alt={`QR код за ${site.voteUrl}`}
+                  className="h-28 w-28 shrink-0 rounded-[3px] bg-white"
+                />
                 <div className="min-w-0">
-                  <p className="font-mono text-xs break-all text-ink-2" data-testid="admin-vote-url">
+                  <p
+                    className="font-mono text-xs break-all text-ink-2"
+                    data-testid="admin-vote-url"
+                  >
                     {site.voteUrl}
                   </p>
                   <div className="mt-3 flex gap-2 text-sm font-semibold">
-                    <a href="/api/qr?format=png&download=1" className="rounded-[3px] px-3 py-1.5 ring-1 ring-white/20 hover:bg-white/5">
+                    <a
+                      href="/api/qr?format=png&download=1"
+                      className="rounded-[3px] px-3 py-1.5 ring-1 ring-white/20 hover:bg-white/5"
+                    >
                       PNG
                     </a>
-                    <a href="/api/qr?format=svg&download=1" className="rounded-[3px] px-3 py-1.5 ring-1 ring-white/20 hover:bg-white/5">
+                    <a
+                      href="/api/qr?format=svg&download=1"
+                      className="rounded-[3px] px-3 py-1.5 ring-1 ring-white/20 hover:bg-white/5"
+                    >
                       SVG
                     </a>
                   </div>
@@ -332,13 +455,21 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
           )}
 
           <RailSection title="Нова рунда">
-            <p className="text-sm text-ink-2">Претходните резултати се чуваат. Гостите можат повторно да гласаат.</p>
+            <p className="text-sm text-ink-2">
+              Претходните резултати се чуваат. Гостите можат повторно да
+              гласаат.
+            </p>
             <form
               className="mt-3 grid gap-3"
               onSubmit={(e) => {
                 e.preventDefault();
                 const label = newLabel.trim();
-                if (label) setConfirm({ kind: "create", label, isRehearsal: newRehearsal });
+                if (label)
+                  setConfirm({
+                    kind: "create",
+                    label,
+                    isRehearsal: newRehearsal,
+                  });
               }}
             >
               <input
@@ -361,13 +492,19 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
               </label>
               <button
                 type="submit"
-                disabled={busy !== null || round?.status === "open" || !newLabel.trim()}
+                disabled={
+                  busy !== null || round?.status === "open" || !newLabel.trim()
+                }
                 className="h-11 rounded-[3px] font-display text-[16px] font-bold tracking-[0.06em] uppercase ring-1 ring-white/30 hover:bg-white/5 disabled:text-muted disabled:ring-white/10"
                 data-testid="create-round"
               >
                 Креирај нова рунда
               </button>
-              {round?.status === "open" && <p className="text-xs text-muted">Прво завршете го тековното гласање.</p>}
+              {round?.status === "open" && (
+                <p className="text-xs text-muted">
+                  Прво завршете го тековното гласање.
+                </p>
+              )}
             </form>
           </RailSection>
 
@@ -382,19 +519,53 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
                       ? "Нема гласови"
                       : `${s.isTie ? "Нерешено: " : ""}${s.leaders.map((l) => l.name).join(", ")}`;
                 return (
-                  <li key={h.round!.id} className="rounded-[3px] bg-navy-800/70 px-3 py-2.5">
+                  <li
+                    key={h.round!.id}
+                    className="rounded-[3px] bg-navy-800/70 px-3 py-2.5"
+                  >
                     <div className="flex items-baseline gap-2">
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{h.round!.label}</span>
-                      <span className="tabular font-display text-[15px] font-bold">{formatCount(h.total)}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {h.round!.label}
+                      </span>
+                      <span className="tabular font-display text-[15px] font-bold">
+                        {formatCount(h.total)}
+                      </span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
-                      <span>{h.round!.isRehearsal ? "Проба" : "Продукција"}</span>
-                      {h.isActive && <span className="text-blue">· активна</span>}
-                      <span className="min-w-0 flex-1 truncate">· {winner}</span>
+                      <span>
+                        {h.round!.isRehearsal ? "Проба" : "Продукција"}
+                      </span>
+                      {h.isActive && (
+                        <span className="text-blue">· активна</span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate">
+                        · {winner}
+                      </span>
                       {h.round!.status === "closed" && (
-                        <a className="font-semibold text-white hover:text-blue" href={`/api/admin/export?roundId=${h.round!.id}`}>
+                        <a
+                          className="font-semibold text-white hover:text-blue"
+                          href={`/api/admin/export?roundId=${h.round!.id}`}
+                        >
                           CSV
                         </a>
+                      )}
+                      {h.round!.isRehearsal && h.round!.status !== "open" && (
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() =>
+                            setConfirm({
+                              kind: "delete",
+                              roundId: h.round!.id,
+                              label: h.round!.label,
+                              isActive: h.isActive,
+                            })
+                          }
+                          className="font-semibold text-red-300 hover:text-red-200 disabled:opacity-50"
+                          data-testid={`delete-round-${h.round!.id}`}
+                        >
+                          Избриши
+                        </button>
                       )}
                     </div>
                   </li>
@@ -413,10 +584,22 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
           setConfirm(null);
           if (!current) return;
           if (current.kind === "close" && round) {
-            void act({ action: "close", roundId: round.id }, "Гласањето е затворено. Победникот е прикажан на екранот.");
+            void act(
+              { action: "close", roundId: round.id },
+              "Гласањето е затворено. Победникот е прикажан на екранот.",
+            );
+          } else if (current.kind === "delete") {
+            void act(
+              { action: "delete", roundId: current.roundId },
+              `Пробната рунда „${current.label}“ е избришана.`,
+            );
           } else if (current.kind === "create") {
             void act(
-              { action: "create", label: current.label, isRehearsal: current.isRehearsal },
+              {
+                action: "create",
+                label: current.label,
+                isRehearsal: current.isRehearsal,
+              },
               "Новата рунда е креирана и е активна.",
             ).then(() => setNewLabel(""));
           }
@@ -426,10 +609,18 @@ export function AdminConsole({ email, initial, site }: { email: string; initial:
   );
 }
 
-function RailSection({ title, children }: { title: string; children: React.ReactNode }) {
+function RailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="border-b border-white/[0.08] px-5 py-5">
-      <h2 className="mb-3 font-display text-[15px] font-bold tracking-[0.1em] text-white uppercase">{title}</h2>
+      <h2 className="mb-3 font-display text-[15px] font-bold tracking-[0.1em] text-white uppercase">
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -446,7 +637,11 @@ function errorText(code: string | undefined): string {
     case "round_not_active":
       return "Рундата веќе не е активна. Состојбата е освежена.";
     case "not_rehearsal":
-      return "Симулирани гласови се дозволени само во пробна рунда.";
+      return "Ова е дозволено само за пробни рунди.";
+    case "round_open":
+      return "Прво завршете го гласањето во пробната рунда.";
+    case "no_other_round":
+      return "Ова е единствената рунда. Прво креирајте продукциска рунда.";
     case "invalid_locale":
     case "invalid_label":
     case "invalid_request":
@@ -457,7 +652,12 @@ function errorText(code: string | undefined): string {
 }
 
 function StatusBadge({ status }: { status: "waiting" | "open" | "closed" }) {
-  const cls = status === "open" ? "bg-blue text-navy" : status === "closed" ? "bg-gold text-navy" : "bg-white/10 text-ink-2";
+  const cls =
+    status === "open"
+      ? "bg-blue text-navy"
+      : status === "closed"
+        ? "bg-gold text-navy"
+        : "bg-white/10 text-ink-2";
   return (
     <span
       className={`chamfer-r flex h-7 items-center pr-4 pl-2.5 font-display text-[13px] font-bold tracking-[0.14em] ${cls}`}
@@ -476,8 +676,14 @@ function ConnectionPill({ connection }: { connection: ConnectionState }) {
       data-testid="admin-connection"
       data-connection={connection}
     >
-      <span className={`h-2 w-2 rounded-full ${live ? "live-dot bg-blue" : "bg-amber-400"}`} />
-      {live ? "Поврзано во живо" : connection === "connecting" ? "Се поврзува…" : "Повторно поврзување…"}
+      <span
+        className={`h-2 w-2 rounded-full ${live ? "live-dot bg-blue" : "bg-amber-400"}`}
+      />
+      {live
+        ? "Поврзано во живо"
+        : connection === "connecting"
+          ? "Се поврзува…"
+          : "Повторно поврзување…"}
     </span>
   );
 }
@@ -499,13 +705,24 @@ function ConfirmDialog({
     if (!confirm && dialog.open) dialog.close();
   }, [confirm]);
 
-  const title = confirm?.kind === "close" ? "Да се заврши гласањето?" : "Да се креира нова рунда?";
+  const title =
+    confirm?.kind === "close"
+      ? "Да се заврши гласањето?"
+      : confirm?.kind === "delete"
+        ? "Да се избрише пробната рунда?"
+        : "Да се креира нова рунда?";
   const body =
     confirm?.kind === "close"
       ? "Гласањето ќе се затвори веднаш, нови гласови нема да се примаат, а победникот ќе се прикаже на LED екранот. Ова не може да се врати."
-      : confirm?.kind === "create"
-        ? `Ќе се креира нова ${confirm.isRehearsal ? "ПРОБНА" : "ПРОДУКЦИСКА"} рунда „${confirm.label}“ која веднаш станува активна на екранот и страницата за гласање. Претходните резултати остануваат зачувани.`
-        : "";
+      : confirm?.kind === "delete"
+        ? `Пробната рунда „${confirm.label}“ и сите нејзини пробни гласови ќе бидат трајно избришани.${
+            confirm.isActive
+              ? " Екранот и телефоните ќе се вратат на продукциската рунда."
+              : ""
+          } Продукциските рунди не се допираат.`
+        : confirm?.kind === "create"
+          ? `Ќе се креира нова ${confirm.isRehearsal ? "ПРОБНА" : "ПРОДУКЦИСКА"} рунда „${confirm.label}“ која веднаш станува активна на екранот и страницата за гласање. Претходните резултати остануваат зачувани.`
+          : "";
 
   return (
     <dialog
@@ -518,10 +735,16 @@ function ConfirmDialog({
       data-testid="confirm-dialog"
     >
       <div className="p-6">
-        <h3 className="font-display text-[26px] leading-tight font-extrabold uppercase">{title}</h3>
+        <h3 className="font-display text-[26px] leading-tight font-extrabold uppercase">
+          {title}
+        </h3>
         <p className="mt-2 text-navy/75">{body}</p>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="h-11 rounded-[3px] px-4 font-semibold ring-1 ring-navy/25">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-11 rounded-[3px] px-4 font-semibold ring-1 ring-navy/25"
+          >
             Откажи
           </button>
           <button
@@ -530,7 +753,11 @@ function ConfirmDialog({
             className="h-11 rounded-[3px] bg-navy px-4 font-display text-[16px] font-bold tracking-[0.04em] text-white uppercase"
             data-testid="confirm-yes"
           >
-            {confirm?.kind === "close" ? "Да, заврши и прикажи победник" : "Да, креирај"}
+            {confirm?.kind === "close"
+              ? "Да, заврши и прикажи победник"
+              : confirm?.kind === "delete"
+                ? "Да, избриши"
+                : "Да, креирај"}
           </button>
         </div>
       </div>
