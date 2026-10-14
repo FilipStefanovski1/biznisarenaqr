@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ExpireAtZero } from "@/components/ExpireAtZero";
 import { Logo } from "@/components/Logo";
+import { formatClock } from "@/lib/server-clock";
+import { useCountdown } from "@/lib/use-countdown";
 import { LOCALES, LOCALE_NAMES } from "@/i18n/messages";
 import { computeStandings, formatCount, formatPercent } from "@/lib/results";
 import type { SiteUrlCheck } from "@/lib/site-url";
@@ -39,6 +42,14 @@ async function fetchHistory(): Promise<
     .filter((r): r is HistoryRound => r !== null);
 }
 
+const DURATIONS: { label: string; seconds: number | null }[] = [
+  { label: "1:00", seconds: 60 },
+  { label: "2:00", seconds: 120 },
+  { label: "3:00", seconds: 180 },
+  { label: "5:00", seconds: 300 },
+  { label: "Без", seconds: null },
+];
+
 const STATUS_LABEL = {
   waiting: "Чека",
   open: "Отворено",
@@ -67,6 +78,7 @@ export function AdminConsole({
   const [newLabel, setNewLabel] = useState("");
   const [newRehearsal, setNewRehearsal] = useState(false);
   const busyRef = useRef(false);
+  const [duration, setDuration] = useState<number | null>(120);
   const router = useRouter();
 
   const round = snapshot?.round ?? null;
@@ -136,30 +148,79 @@ export function AdminConsole({
 
   const primary =
     round?.status === "waiting" ? (
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() =>
-          void act(
-            { action: "open", roundId: round.id },
-            "Гласањето е отворено.",
-          )
-        }
-        className="slab flex h-16 w-full items-center justify-center gap-3 bg-blue font-display text-[22px] font-bold tracking-[0.06em] text-navy uppercase transition-[filter] hover:brightness-105 disabled:opacity-50"
-        data-testid="open-voting"
-      >
-        {busy === "open" ? "Се отвора…" : "Започни гласање"}
-      </button>
+      <div className="grid gap-3">
+        <div
+          className="flex items-center gap-2"
+          role="radiogroup"
+          aria-label="Времетраење на гласањето"
+        >
+          <span className="mr-2 text-sm font-semibold text-ink-2">Тајмер</span>
+          {DURATIONS.map((d) => (
+            <button
+              key={d.label}
+              type="button"
+              role="radio"
+              aria-checked={duration === d.seconds}
+              onClick={() => setDuration(d.seconds)}
+              className={`h-10 min-w-16 rounded-[3px] px-3 font-display text-[16px] font-bold tracking-[0.04em] transition-colors ${
+                duration === d.seconds
+                  ? "bg-blue text-navy"
+                  : "text-ink-2 ring-1 ring-white/15 hover:bg-white/5 hover:text-white"
+              }`}
+              data-testid={`duration-${d.seconds ?? "none"}`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() =>
+            void act(
+              { action: "open", roundId: round.id, durationSeconds: duration },
+              duration
+                ? `Гласањето е отворено (${formatClock(duration * 1000)}).`
+                : "Гласањето е отворено.",
+            )
+          }
+          className="slab flex h-16 w-full items-center justify-center gap-3 bg-blue font-display text-[22px] font-bold tracking-[0.06em] text-navy uppercase transition-[filter] hover:brightness-105 disabled:opacity-50"
+          data-testid="open-voting"
+        >
+          {busy === "open"
+            ? "Се отвора…"
+            : duration
+              ? `Започни гласање · ${formatClock(duration * 1000)}`
+              : "Започни гласање"}
+        </button>
+      </div>
     ) : round?.status === "open" ? (
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => setConfirm({ kind: "close" })}
-        className="slab flex h-16 w-full items-center justify-center gap-3 bg-gold font-display text-[22px] font-bold tracking-[0.06em] text-navy uppercase transition-[filter] hover:brightness-105 disabled:opacity-50"
-        data-testid="close-voting"
-      >
-        Заврши гласање и прикажи победник
-      </button>
+      <div className="grid gap-3">
+        {round.closesAt && (
+          <AdminTimer
+            openedAt={round.openedAt}
+            closesAt={round.closesAt}
+            disabled={busy !== null}
+            onExtend={() =>
+              void act(
+                { action: "extend", roundId: round.id, seconds: 30 },
+                "Додадени 30 секунди.",
+              )
+            }
+          />
+        )}
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => setConfirm({ kind: "close" })}
+          className="slab flex h-16 w-full items-center justify-center gap-3 bg-gold font-display text-[22px] font-bold tracking-[0.06em] text-navy uppercase transition-[filter] hover:brightness-105 disabled:opacity-50"
+          data-testid="close-voting"
+        >
+          {round.closesAt
+            ? "Заврши веднаш и прикажи победник"
+            : "Заврши гласање и прикажи победник"}
+        </button>
+      </div>
     ) : round?.status === "closed" ? (
       <div className="flex items-center gap-4">
         <p className="flex-1 text-[15px] font-semibold text-ink-2">
@@ -576,6 +637,15 @@ export function AdminConsole({
         </aside>
       </div>
 
+      {round?.status === "open" && round.closesAt && (
+        <ExpireAtZero
+          key={`${round.id}:${round.closesAt}`}
+          openedAt={round.openedAt}
+          closesAt={round.closesAt}
+          onState={offer}
+        />
+      )}
+
       <ConfirmDialog
         confirm={confirm}
         onCancel={() => setConfirm(null)}
@@ -638,6 +708,11 @@ function errorText(code: string | undefined): string {
       return "Рундата веќе не е активна. Состојбата е освежена.";
     case "not_rehearsal":
       return "Ова е дозволено само за пробни рунди.";
+    case "invalid_duration":
+      return "Неважечко времетраење.";
+    case "no_timer":
+    case "time_over":
+      return "Тајмерот веќе не работи.";
     case "round_open":
       return "Прво завршете го гласањето во пробната рунда.";
     case "no_other_round":
@@ -762,5 +837,54 @@ function ConfirmDialog({
         </div>
       </div>
     </dialog>
+  );
+}
+
+function AdminTimer({
+  openedAt,
+  closesAt,
+  disabled,
+  onExtend,
+}: {
+  openedAt: string | null;
+  closesAt: string;
+  disabled: boolean;
+  onExtend: () => void;
+}) {
+  const { remainingMs, totalMs } = useCountdown({
+    open: true,
+    openedAt,
+    closesAt,
+  });
+  const ms = remainingMs ?? 0;
+  const pct = totalMs ? Math.max(0, Math.min(1, ms / totalMs)) : 0;
+  const urgent = ms <= 10_000;
+  return (
+    <div
+      className="flex items-center gap-4"
+      data-testid="admin-timer"
+      data-remaining={Math.ceil(ms / 1000)}
+    >
+      <span
+        className={`tabular w-24 font-display text-[40px] leading-none font-bold ${urgent ? "text-red-400" : ""}`}
+      >
+        {ms > 0 ? formatClock(ms) : "0:00"}
+      </span>
+      <div className="h-2 flex-1 bg-white/[0.08]">
+        <div
+          className={`h-full origin-left transition-transform duration-300 ease-linear ${urgent ? "bg-red-400" : "bg-blue"}`}
+          style={{ transform: `scaleX(${pct})` }}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={disabled || ms <= 0}
+        onClick={onExtend}
+        className="h-10 rounded-[3px] px-3 font-display text-[16px] font-bold ring-1 ring-white/20 hover:bg-white/5 disabled:opacity-40"
+        data-testid="extend-timer"
+      >
+        +30 сек
+      </button>
+    </div>
   );
 }

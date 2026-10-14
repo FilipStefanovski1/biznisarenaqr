@@ -24,7 +24,7 @@ describe("public API surface (PostgREST with the publishable key)", () => {
   it("anon can read only the aggregate public state", async () => {
     const { data, error } = await anon.rpc("get_public_state");
     expect(error).toBeNull();
-    expect(Object.keys(data).sort()).toEqual(["results", "round", "screenLocale", "total", "version"]);
+    expect(Object.keys(data).sort()).toEqual(["results", "round", "screenLocale", "serverTime", "total", "version"]);
     expect(JSON.stringify(data)).not.toMatch(/voter/i);
   });
 
@@ -43,6 +43,16 @@ describe("public API surface (PostgREST with the publishable key)", () => {
     }
     const { rows } = await pool.query("select count(*)::int as n from voting.votes where round_id = $1", [round]);
     expect(rows[0].n).toBe(0);
+  });
+
+  it("anon may call expire_round (it can never close a round early) but not extend timers", async () => {
+    const round = await freshRehearsalRound();
+    const { data, error } = await anon.rpc("expire_round");
+    expect(error).toBeNull();
+    expect(data.code).toBe("not_due");
+    expect((await anon.rpc("admin_extend_round", { p_round_id: round, p_seconds: 30 })).error).not.toBeNull();
+    const { rows } = await pool.query("select status from voting.rounds where id = $1", [round]);
+    expect(rows[0].status).toBe("open");
   });
 
   it("public sign-up is disabled, so nobody can self-register an account", async () => {

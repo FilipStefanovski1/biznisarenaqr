@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getRealtimeClient } from "@/lib/supabase/browser";
+import { learnServerTime } from "@/lib/server-clock";
 import { isNewer, parseSnapshot, type Snapshot } from "@/lib/snapshot";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting";
@@ -75,8 +76,14 @@ export function useLiveScoreboard(initial: Snapshot | null, options: Options = {
     fetchingRef.current = true;
     lastFetchRef.current = Date.now();
     try {
+      const sentAt = Date.now();
       const res = await fetch(`/api/state?fresh=1`, { cache: "no-store" });
-      if (res.ok) offer(parseSnapshot(await res.json()));
+      const receivedAt = Date.now();
+      if (res.ok) {
+        const snap = parseSnapshot(await res.json());
+        learnServerTime(snap?.serverTime, sentAt, receivedAt);
+        offer(snap);
+      }
     } catch {
       // Keep showing the last confirmed results; the poll loop retries.
     } finally {

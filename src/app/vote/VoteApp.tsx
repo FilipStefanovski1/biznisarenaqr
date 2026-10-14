@@ -17,6 +17,8 @@ import {
   MESSAGES,
 } from "@/i18n/messages";
 import { useGuestLocale } from "@/i18n/use-locale";
+import { formatClock, learnServerTime, serverNow } from "@/lib/server-clock";
+import { useCountdown } from "@/lib/use-countdown";
 import { computeStandings } from "@/lib/results";
 import {
   isNewer,
@@ -52,9 +54,12 @@ async function fetchWithTimeout(
 
 async function fetchVoterState(): Promise<VoterState | null> {
   try {
+    const sentAt = Date.now();
     const res = await fetchWithTimeout("/api/vote");
+    const receivedAt = Date.now();
     if (!res.ok) return null;
     const parsed = voterStateSchema.safeParse(await res.json());
+    if (parsed.success) learnServerTime(parsed.data.state.serverTime, sentAt, receivedAt);
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -125,10 +130,26 @@ export function VoteApp() {
     myVote && state?.round && myVote.roundId === state.round.id,
   );
   const loaded = state !== null;
+  const closesAt = status === "open" ? (state?.round?.closesAt ?? null) : null;
+  const [expiredFor, setExpiredFor] = useState<string | null>(null);
+  const timeOver = closesAt !== null && expiredFor === closesAt;
+  useEffect(() => {
+    if (!closesAt) return;
+    const wait = Date.parse(closesAt) - serverNow();
+    const id = setTimeout(() => setExpiredFor(closesAt), Math.max(0, wait));
+    return () => clearTimeout(id);
+  }, [closesAt]);
+
   useEffect(() => {
     if (!loaded) return;
     const interval =
-      status === "waiting" ? 3000 : status === "closed" ? 8000 : 5000;
+      status === "waiting"
+        ? 3000
+        : status === "closed"
+          ? 8000
+          : timeOver
+            ? 2000
+            : 5000;
     const timer = setInterval(async () => {
       try {
         const res = await fetchWithTimeout("/api/state");
@@ -151,10 +172,11 @@ export function VoteApp() {
       }
     }, interval);
     return () => clearInterval(timer);
-  }, [loaded, status, applyState, loadVoter]);
+  }, [loaded, status, timeOver, applyState, loadVoter]);
 
   // If voting closes while the confirmation sheet is open, the sheet goes away.
-  const sheetOpen = pending !== null && status === "open" && !hasVoted;
+  const sheetOpen =
+    pending !== null && status === "open" && !hasVoted && !timeOver;
 
   const submit = useCallback(async () => {
     const round = stateRef.current?.round;
@@ -238,66 +260,82 @@ export function VoteApp() {
           ? "receipt"
           : round.status === "waiting"
             ? "waiting"
-            : "ballot";
+            : timeOver
+              ? "timeup"
+              : "ballot";
 
   return (
     <MotionConfig reducedMotion="user">
       <div className="app-surface fixed inset-0 flex items-center justify-center bg-navy-950">
         <div className="device relative flex h-full w-full flex-col overflow-hidden bg-navy sm:h-[min(880px,calc(100dvh-48px))] sm:max-w-[420px] sm:rounded-[28px] sm:shadow-[0_30px_80px_rgba(0,0,0,0.55)] sm:ring-1 sm:ring-white/10">
-      <main
-        className="flex min-h-0 flex-1 flex-col px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-        inert={sheetOpen}
-      >
-        <header className="flex shrink-0 items-center gap-3">
-          <div className="h-9 shrink-0">
-            <Logo priority />
-          </div>
-          {round && <StatusBug status={round.status} t={t} />}
-          <div className="ml-auto">
-            <LanguageSwitcher
-              locale={locale}
-              label={t.language}
-              onChange={setLocale}
-            />
-          </div>
-        </header>
-        {round?.isRehearsal && (
-          <div className="mt-3 border-y border-white/25 py-1.5 text-center font-display text-[13px] font-bold tracking-[0.24em] text-white">
-            {t.rehearsal}
-          </div>
-        )}
+          <main
+            className="flex min-h-0 flex-1 flex-col px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            inert={sheetOpen}
+          >
+            <header className="flex shrink-0 items-center gap-3">
+              <div className="h-9 shrink-0">
+                <Logo priority />
+              </div>
+              {round && <StatusBug status={round.status} t={t} />}
+              {closesAt && !hasVoted && !timeOver && (
+                <PhoneTimer
+                  openedAt={round?.openedAt ?? null}
+                  closesAt={closesAt}
+                />
+              )}
+              <div className="ml-auto">
+                <LanguageSwitcher
+                  locale={locale}
+                  label={t.language}
+                  onChange={setLocale}
+                />
+              </div>
+            </header>
+            {round?.isRehearsal && (
+              <div className="mt-3 border-y border-white/25 py-1.5 text-center font-display text-[13px] font-bold tracking-[0.24em] text-white">
+                {t.rehearsal}
+              </div>
+            )}
 
-        <div className="relative flex min-h-0 flex-1 flex-col pt-7" aria-live="polite">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={view}
-              className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
-              initial={{ opacity: 0, x: 28 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -28 }}
-              transition={{ duration: 0.32, ease: EASE }}
+            <div
+              className="relative flex min-h-0 flex-1 flex-col pt-7"
+              aria-live="polite"
             >
-              {view === "splash" && <Loading t={t} />}
-              {view === "failed" && <LoadFailed t={t} onRetry={() => void loadVoter()} />}
-              {state && view !== "splash" && view !== "failed" && renderBody()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={view}
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+                  initial={{ opacity: 0, x: 28 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -28 }}
+                  transition={{ duration: 0.32, ease: EASE }}
+                >
+                  {view === "splash" && <Loading t={t} />}
+                  {view === "failed" && (
+                    <LoadFailed t={t} onRetry={() => void loadVoter()} />
+                  )}
+                  {state &&
+                    view !== "splash" &&
+                    view !== "failed" &&
+                    renderBody()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </main>
 
-      <AnimatePresence>
-        {sheetOpen && pending && (
-          <ConfirmSheet
-            key="confirm"
-            contestant={pending}
-            t={t}
-            submitting={submitting}
-            error={submitError}
-            onConfirm={() => void submit()}
-            onBack={closeSheet}
-          />
-        )}
-      </AnimatePresence>
+          <AnimatePresence>
+            {sheetOpen && pending && (
+              <ConfirmSheet
+                key="confirm"
+                contestant={pending}
+                t={t}
+                submitting={submitting}
+                error={submitError}
+                onConfirm={() => void submit()}
+                onBack={closeSheet}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </MotionConfig>
@@ -316,6 +354,7 @@ export function VoteApp() {
       );
     if (hasVoted) return <Receipt vote={myVote!} t={t} />;
     if (round.status === "waiting") return <Waiting t={t} />;
+    if (timeOver) return <TimeUp t={t} />;
     return (
       <Ballot
         t={t}
@@ -353,7 +392,10 @@ function StatusBug({
 
 function Loading({ t }: { t: T }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 pb-16" role="status">
+    <div
+      className="flex flex-1 flex-col items-center justify-center gap-6 pb-16"
+      role="status"
+    >
       <div className="h-20">
         <Logo />
       </div>
@@ -691,6 +733,37 @@ function Closed({
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function PhoneTimer({
+  openedAt,
+  closesAt,
+}: {
+  openedAt: string | null;
+  closesAt: string;
+}) {
+  const { remainingMs } = useCountdown({ open: true, openedAt, closesAt });
+  const ms = remainingMs ?? 0;
+  const urgent = ms <= 10_000;
+  return (
+    <span
+      className={`tabular flex h-7 items-center px-2.5 font-display text-[17px] font-bold ${
+        urgent ? "bg-red-500 text-white" : "bg-mist text-navy"
+      }`}
+      role="timer"
+      data-testid="phone-timer"
+    >
+      {formatClock(ms)}
+    </span>
+  );
+}
+
+function TimeUp({ t }: { t: T }) {
+  return (
+    <div className="flex flex-1 flex-col" data-testid="vote-timeup">
+      <Heading title={t.timeUp} sub={t.watchScreen} />
     </div>
   );
 }

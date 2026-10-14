@@ -198,4 +198,70 @@ describe("vote integrity (database)", () => {
     await expect(pool.query("delete from voting.votes where round_id = $1", [other])).rejects.toThrow(/append-only/);
     await expect(query("select public.admin_delete_rehearsal_round($1)", [other])).rejects.toThrow(/admin privileges required/);
   });
+
+  describe("voting timer", () => {
+    async function timedRound(seconds: number) {
+      const id = await freshRehearsalRound(false);
+      const res = await asAdmin<Json & { state: { round: { closesAt: string; openedAt: string } } }>(
+        "select public.admin_open_round($1, $2)",
+        [id, seconds],
+      );
+      expect(res.code).toBe("opened");
+      return { id, round: res.state.round };
+    }
+    /** Moves the deadline into the past without waiting (superuser test helper). */
+    async function expireNow(id: string) {
+      await pool.query(
+        "update voting.rounds set closes_at = opened_at + interval '1 millisecond', version = nextval('voting.state_version_seq') where id = $1",
+        [id],
+      );
+    }
+
+    it("stores a server-side deadline and exposes it with the server clock", async () => {
+      const { round } = await timedRound(120);
+      const ms = Date.parse(round.closesAt) - Date.parse(round.openedAt);
+      expect(ms).toBe(120_000);
+      const pub = await query<{ serverTime: string; round: { closesAt: string } }>("select public.get_public_state()");
+      expect(pub.round.closesAt).toBeTruthy();
+      expect(Math.abs(Date.parse(pub.serverTime) - Date.now())).toBeLessThan(5000);
+    });
+
+    it("rejects votes after the deadline and closes the round on the first late vote", async () => {
+      const { id } = await timedRound(60);
+      expect((await vote(id, randomUUID(), "yova")).code).toBe("accepted");
+      await expireNow(id);
+      expect(await vote(id, randomUUID(), "seed-of-life")).toMatchObject({ ok: false, code: "not_open" });
+      const row = (await pool.query("select status, closed_at = closes_at as exact from voting.rounds where id = $1", [id])).rows[0];
+      expect(row).toEqual({ status: "closed", exact: true });
+      expect(await countVotes(id)).toBe(1);
+// A further late vote is still refused once closed.
+      expect((await vote(id, randomUUID(), "yova")).code).toBe("not_open");
+      expect(await countVotes(id)).toBe(1);
+    });
+
+    it("expire_round never closes early, and closes once the deadline passed", async () => {
+      const { id } = await timedRound(60);
+      expect((await query<Json>("select public.expire_round()")).code).toBe("not_due");
+      expect((await pool.query("select status from voting.rounds where id = $1", [id])).rows[0].status).toBe("open");
+      await expireNow(id);
+      expect((await query<Json>("select public.expire_round()")).code).toBe("closed");
+      expect((await query<Json>("select public.expire_round()")).code).toBe("not_due"); // idempotent
+      expect((await pool.query("select status from voting.rounds where id = $1", [id])).rows[0].status).toBe("closed");
+    });
+
+    it("extends a running timer and validates durations", async () => {
+      const { id, round } = await timedRound(60);
+      const res = await asAdmin<Json & { state: { round: { closesAt: string } } }>(
+        "select public.admin_extend_round($1, 30)",
+        [id],
+      );
+      expect(res.code).toBe("extended");
+      expect(Date.parse(res.state.round.closesAt) - Date.parse(round.closesAt)).toBe(30_000);
+      const other = await freshRehearsalRound(false);
+      expect((await asAdmin<Json>("select public.admin_open_round($1, 3)", [other])).code).toBe("invalid_duration");
+      expect((await asAdmin<Json>("select public.admin_open_round($1, 99999)", [other])).code).toBe("invalid_duration");
+      expect((await asAdmin<Json>("select public.admin_open_round($1)", [other])).code).toBe("opened"); // no timer
+      expect((await asAdmin<Json>("select public.admin_extend_round($1, 30)", [other])).code).toBe("no_timer");
+    });
+  });
 });

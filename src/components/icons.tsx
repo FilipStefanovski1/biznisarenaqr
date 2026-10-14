@@ -39,3 +39,17 @@ export const Expand = ({ className }: P) => (
     <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" strokeLinecap="square" />
   </svg>
 );
+
+export const SpeakerOn = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    <path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11" strokeLinecap="square" />
+  </svg>
+);
+
+export const SpeakerOff = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    <path d="M16 9.5l5 5M21 9.5l-5 5" strokeLinecap="square" />
+  </svg>
+);

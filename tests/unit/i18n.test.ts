@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatClock } from "@/lib/server-clock";
 import { detectLocale, formatNumber, formatPercentFor, LOCALES, MESSAGES } from "@/i18n/messages";
 
 describe("translations", () => {
@@ -40,5 +41,13 @@ describe("translations", () => {
     expect(formatPercentFor(48.24, "sv")).toBe("48,2 %");
     expect(MESSAGES.en.votes(1)).toBe("vote");
     expect(MESSAGES.sv.votes(3)).toBe("röster");
+  });
+
+  it("formats the countdown clock", () => {
+    expect(formatClock(120_000)).toBe("2:00");
+    expect(formatClock(65_400)).toBe("1:06");
+    expect(formatClock(9_001)).toBe("0:10");
+    expect(formatClock(0)).toBe("0:00");
+    expect(formatClock(-500)).toBe("0:00");
   });
 });

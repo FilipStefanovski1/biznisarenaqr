@@ -360,4 +360,46 @@ test.describe("rounds and resilience", () => {
     const rounds = (await (await page.request.get("/api/admin/rounds")).json()).rounds as Snapshot[];
     expect(rounds.some((r) => r.round?.id === roundId)).toBe(false);
   });
+
+  test("a timed round counts down everywhere and reveals the winner by itself at zero", async ({ browser, page, baseURL }) => {
+    test.setTimeout(90_000);
+    await loginAdmin(page);
+    const admin = adminApi(page, baseURL!);
+    const roundId = await admin.freshRound({ open: false, label: "E2E timer" });
+
+    const screenCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    const screen = await screenCtx.newPage();
+    await screen.goto("/screen");
+    await expect(screen.getByTestId("connection")).toHaveAttribute("data-connection", "live");
+
+    const opened = await admin.post({ action: "open", roundId, durationSeconds: 12 });
+    expect(opened.body.ok).toBe(true);
+    await expect(screen.getByTestId("screen-timer")).toBeVisible();
+    const startLeft = Number(await screen.getByTestId("screen-timer").getAttribute("data-remaining"));
+    expect(startLeft).toBeGreaterThan(8);
+    expect(startLeft).toBeLessThanOrEqual(12);
+
+    const guest = await newGuest(browser);
+    await guest.page.goto("/vote");
+    await expect(guest.page.getByTestId("phone-timer")).toBeVisible();
+    await guest.page.getByTestId("choice-yova").click();
+    await guest.page.getByTestId("confirm-vote").click();
+    await expect(guest.page.getByTestId("vote-success")).toBeVisible();
+
+    // Nobody presses "close": the deadline does it.
+    await expect(screen.getByText("CONGRATULATIONS!")).toBeVisible({ timeout: 25_000 });
+    await expect(screen.getByTestId("winner-name")).toHaveText("YOVA");
+    const state = await admin.state();
+    expect(state.round!.status).toBe("closed");
+    expect(state.total).toBe(1);
+
+    // A vote after zero is refused.
+    const late = await voteViaApi(guest.context.request, baseURL!, roundId, "yova");
+    expect(late.body.code).toBe("already_voted");
+    const stranger = await playwrightRequest.newContext({ baseURL });
+    expect((await voteViaApi(stranger, baseURL!, roundId, "seed-of-life")).body.code).toBe("not_open");
+    await stranger.dispose();
+    await guest.context.close();
+    await screenCtx.close();
+  });
 });

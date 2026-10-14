@@ -70,6 +70,10 @@ type Messages = {
   connecting: string;
   reconnecting: string;
   fullscreen: string;
+  timeLeft: string;
+  timeUp: string;
+  soundOn: string;
+  soundOff: string;
   qrUnavailable: string;
   votes: (n: number) => string;
 };
@@ -125,6 +129,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     connecting: "Се поврзува…",
     reconnecting: "Повторно поврзување…",
     fullscreen: "Цел екран",
+    timeLeft: "Преостанато време",
+    timeUp: "Времето истече!",
+    soundOn: "Звук вклучен",
+    soundOff: "Звук исклучен",
     qrUnavailable: "QR кодот не е достапен.",
     votes: (n) => (n % 10 === 1 && n % 100 !== 11 ? "глас" : "гласови"),
   },
@@ -178,6 +186,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     connecting: "Connecting…",
     reconnecting: "Reconnecting…",
     fullscreen: "Fullscreen",
+    timeLeft: "Time left",
+    timeUp: "Time is up!",
+    soundOn: "Sound on",
+    soundOff: "Sound off",
     qrUnavailable: "QR code unavailable.",
     votes: (n) => (n === 1 ? "vote" : "votes"),
   },
@@ -231,6 +243,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     connecting: "Ansluter…",
     reconnecting: "Återansluter…",
     fullscreen: "Helskärm",
+    timeLeft: "Tid kvar",
+    timeUp: "Tiden är ute!",
+    soundOn: "Ljud på",
+    soundOff: "Ljud av",
     qrUnavailable: "QR-koden är inte tillgänglig.",
     votes: (n) => (n === 1 ? "röst" : "röster"),
   },
@@ -284,6 +300,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     connecting: "Duke u lidhur…",
     reconnecting: "Duke u rilidhur…",
     fullscreen: "Ekran i plotë",
+    timeLeft: "Koha e mbetur",
+    timeUp: "Koha mbaroi!",
+    soundOn: "Zëri ndezur",
+    soundOff: "Zëri fikur",
     qrUnavailable: "Kodi QR nuk është i disponueshëm.",
     votes: (n) => (n === 1 ? "votë" : "vota"),
   },
@@ -337,6 +357,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     connecting: "Bağlanıyor…",
     reconnecting: "Yeniden bağlanıyor…",
     fullscreen: "Tam ekran",
+    timeLeft: "Kalan süre",
+    timeUp: "Süre doldu!",
+    soundOn: "Ses açık",
+    soundOff: "Ses kapalı",
     qrUnavailable: "QR kod kullanılamıyor.",
     votes: () => "oy",
   },

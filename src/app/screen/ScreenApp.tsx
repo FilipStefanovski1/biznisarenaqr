@@ -9,9 +9,9 @@ import {
   MotionConfig,
   useReducedMotion,
 } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { Expand } from "@/components/icons";
+import { Expand, SpeakerOff, SpeakerOn } from "@/components/icons";
 import { Logo } from "@/components/Logo";
 import {
   formatNumber,
@@ -21,7 +21,11 @@ import {
 } from "@/i18n/messages";
 import { computeStandings, type Standings } from "@/lib/results";
 import type { SiteUrlCheck } from "@/lib/site-url";
+import { ArenaSound, type Urgency } from "@/lib/arena-sound";
+import { formatClock } from "@/lib/server-clock";
 import type { Snapshot } from "@/lib/snapshot";
+import { useCountdown } from "@/lib/use-countdown";
+import { ExpireAtZero } from "@/components/ExpireAtZero";
 import {
   useLiveScoreboard,
   type ConnectionState,
@@ -40,7 +44,7 @@ export function ScreenApp({
   site: SiteUrlCheck;
   qrSvg: string | null;
 }) {
-  const { snapshot, connection } = useLiveScoreboard(initial);
+  const { snapshot, connection, offer } = useLiveScoreboard(initial);
   const locale: Locale = snapshot?.screenLocale ?? "mk";
   const t = MESSAGES[locale];
   const round = snapshot?.round ?? null;
@@ -59,7 +63,10 @@ export function ScreenApp({
     const wake = () => {
       stageRef.current?.setAttribute("data-idle", "false");
       clearTimeout(timer);
-      timer = setTimeout(() => stageRef.current?.setAttribute("data-idle", "true"), 2500);
+      timer = setTimeout(
+        () => stageRef.current?.setAttribute("data-idle", "true"),
+        2500,
+      );
     };
     wake();
     window.addEventListener("pointermove", wake);
@@ -91,8 +98,34 @@ export function ScreenApp({
               {round?.isRehearsal && (
                 <span className={styles.rehearsal}>{t.rehearsal}</span>
               )}
+              {status === "open" && round?.closesAt && (
+                <ClockSlab
+                  openedAt={round.openedAt}
+                  closesAt={round.closesAt}
+                  t={t}
+                />
+              )}
             </div>
+            {status === "open" && round?.closesAt && (
+              <TimerBar openedAt={round.openedAt} closesAt={round.closesAt} />
+            )}
           </header>
+          {status === "open" && round?.closesAt && (
+            <ExpireAtZero
+              key={`${round.id}:${round.closesAt}`}
+              openedAt={round.openedAt}
+              closesAt={round.closesAt}
+              onState={offer}
+            />
+          )}
+          <SoundDirector
+            status={status}
+            roundId={round?.id ?? null}
+            openedAt={round?.openedAt ?? null}
+            closesAt={round?.closesAt ?? null}
+            hasVotes={standings.hasVotes}
+            label={{ on: t.soundOn, off: t.soundOff }}
+          />
 
           <AnimatePresence mode="wait" initial={false}>
             {closed ? (
@@ -394,7 +427,9 @@ function TheCall({
     return (
       <div data-testid="winner-none" style={{ width: "100%" }}>
         <motion.div style={{ width: "100%" }} {...wipe}>
-          <div className={`${styles.band} ${styles.bandQuiet}`}>{t.closedTitle}</div>
+          <div className={`${styles.band} ${styles.bandQuiet}`}>
+            {t.closedTitle}
+          </div>
         </motion.div>
         <motion.div className={styles.noVotes} {...fade(0.5)}>
           {t.noVotes}
@@ -592,6 +627,211 @@ function FullscreenButton({ label }: { label: string }) {
     >
       <Expand className="h-4 w-4" />
       {label}
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ timer */
+
+function ClockSlab({
+  openedAt,
+  closesAt,
+  t,
+}: {
+  openedAt: string | null;
+  closesAt: string;
+  t: T;
+}) {
+  const { remainingMs } = useCountdown({ open: true, openedAt, closesAt });
+  const ms = remainingMs ?? 0;
+  const urgent = ms <= 10_000;
+  const over = ms <= 0;
+  return (
+    <div
+      className={`${styles.clock} ${urgent ? styles.clockUrgent : ""}`}
+      data-testid="screen-timer"
+      data-remaining={Math.ceil(ms / 1000)}
+      role="timer"
+      aria-live="off"
+    >
+      <span className={styles.clockLabel}>{over ? t.timeUp : t.timeLeft}</span>
+      {!over && (
+        <span
+          key={urgent ? Math.ceil(ms / 1000) : "steady"}
+          className={`${styles.clockValue} ${urgent ? styles.clockPulse : ""}`}
+        >
+          {formatClock(ms)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function TimerBar({
+  openedAt,
+  closesAt,
+}: {
+  openedAt: string | null;
+  closesAt: string;
+}) {
+  const { remainingMs, totalMs } = useCountdown({
+    open: true,
+    openedAt,
+    closesAt,
+  });
+  const pct = totalMs
+    ? Math.max(0, Math.min(1, (remainingMs ?? 0) / totalMs))
+    : 0;
+  return (
+    <div className={styles.timerTrack} aria-hidden>
+      <div
+        className={`${styles.timerFill} ${(remainingMs ?? 0) <= 10_000 ? styles.timerFillUrgent : ""}`}
+        style={{ transform: `scaleX(${pct})` }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ sound */
+
+const SOUND_KEY = "ba_screen_sound";
+const soundListeners = new Set<() => void>();
+function readSoundPref(): boolean {
+  try {
+    return window.localStorage.getItem(SOUND_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+function writeSoundPref(on: boolean) {
+  try {
+    window.localStorage.setItem(SOUND_KEY, on ? "on" : "off");
+  } catch {
+    // private mode: keep it for this session only
+  }
+  soundListeners.forEach((l) => l());
+}
+function subscribeSoundPref(listener: () => void) {
+  soundListeners.add(listener);
+  return () => soundListeners.delete(listener);
+}
+
+function SoundDirector({
+  status,
+  roundId,
+  openedAt,
+  closesAt,
+  hasVotes,
+  label,
+}: {
+  status: string | null;
+  roundId: string | null;
+  openedAt: string | null;
+  closesAt: string | null;
+  hasVotes: boolean;
+  label: { on: string; off: string };
+}) {
+  const engine = useRef<ArenaSound | null>(null);
+  const enabled = useSyncExternalStore(
+    subscribeSoundPref,
+    readSoundPref,
+    () => true,
+  );
+  const [unlocked, setUnlocked] = useState(false);
+  const { remainingMs } = useCountdown({
+    open: status === "open",
+    openedAt,
+    closesAt,
+  });
+  const lastSecond = useRef<number | null>(null);
+  const prevStatus = useRef<{
+    id: string | null;
+    status: string | null;
+  } | null>(null);
+  const timeUpFor = useRef<string | null>(null);
+
+  // Restore the operator's choice; unlock audio on the first click/key anywhere.
+  useEffect(() => {
+    engine.current = new ArenaSound();
+    const unlock = () =>
+      void engine.current?.unlock().then((ok) => ok && setUnlocked(true));
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      engine.current?.dispose();
+      engine.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    engine.current?.setEnabled(enabled);
+  }, [enabled, unlocked]);
+
+  // Music while voting is open.
+  const playing = unlocked && status === "open";
+  useEffect(() => {
+    const e = engine.current;
+    if (!e) return;
+    if (playing) e.startMusic();
+    else e.stopMusic();
+  }, [playing]);
+
+  // Build-up, final-second ticks and the "time's up" hit.
+  useEffect(() => {
+    const e = engine.current;
+    if (!e || !unlocked || remainingMs === null) return;
+    const urgency: Urgency =
+      remainingMs <= 10_000 ? 2 : remainingMs <= 30_000 ? 1 : 0;
+    e.setUrgency(urgency);
+    const sec = Math.ceil(remainingMs / 1000);
+    if (sec !== lastSecond.current) {
+      lastSecond.current = sec;
+      if (sec >= 1 && sec <= 10) e.tick(sec);
+      if (sec === 0 && roundId && timeUpFor.current !== roundId) {
+        timeUpFor.current = roundId;
+        e.timeUp();
+      }
+    }
+  }, [remainingMs, unlocked, roundId]);
+
+  // Fanfare when this round goes from open to closed while the screen is watching.
+  useEffect(() => {
+    const prev = prevStatus.current;
+    prevStatus.current = { id: roundId, status };
+    if (!unlocked || !prev || prev.id !== roundId) return;
+    if (prev.status === "open" && status === "closed" && hasVotes) {
+      const id = setTimeout(
+        () => engine.current?.fanfare(),
+        timeUpFor.current === roundId ? 900 : 350,
+      );
+      return () => clearTimeout(id);
+    }
+    if (status !== "open") engine.current?.setUrgency(0);
+  }, [status, roundId, hasVotes, unlocked]);
+
+  const toggle = () => {
+    writeSoundPref(!enabled);
+    void engine.current?.unlock().then((ok) => ok && setUnlocked(true));
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={`${styles.soundButton} ${enabled && !unlocked ? styles.soundButtonPrompt : ""}`}
+      data-testid="sound-toggle"
+      data-enabled={enabled}
+      data-unlocked={unlocked}
+      aria-pressed={enabled}
+    >
+      {enabled ? (
+        <SpeakerOn className="h-4 w-4" />
+      ) : (
+        <SpeakerOff className="h-4 w-4" />
+      )}
+      {enabled ? label.on : label.off}
     </button>
   );
 }

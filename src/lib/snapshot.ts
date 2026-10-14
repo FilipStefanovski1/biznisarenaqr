@@ -9,6 +9,8 @@ export const snapshotSchema = z.object({
   version: z.number().int().nonnegative(),
   /** LED screen language chosen by the organizers. */
   screenLocale: z.enum(LOCALES).default(DEFAULT_LOCALE),
+  /** Database clock when the snapshot was produced; used to correct device clock skew. */
+  serverTime: z.string().optional(),
   round: z
     .object({
       id: z.string().uuid(),
@@ -18,6 +20,8 @@ export const snapshotSchema = z.object({
       createdAt: z.string().nullable().optional(),
       openedAt: z.string().nullable(),
       closedAt: z.string().nullable(),
+      /** Voting deadline when the round runs on a timer (null = no timer). */
+      closesAt: z.string().nullable().optional(),
     })
     .nullable(),
   results: z.array(z.object({ contestantId: z.string(), votes: z.number().int().nonnegative() })),

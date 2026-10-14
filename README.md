@@ -32,6 +32,22 @@ full-screen and can be installed to the home screen ("Add to Home Screen" → op
 a browser bar, event icon); on a laptop it shows as a phone-sized app frame. `/admin` is a
 one-screen control room. `/screen` is a kiosk display (cursor hides after 2.5 s).
 
+### Voting timer and sound
+
+- In `/admin` pick **Тајмер** (1:00, 2:00 default, 3:00, 5:00 or **Без** = no timer) and press
+  **Започни гласање**. The deadline is stored in the database: votes after zero are refused
+  by the server even if a phone still shows the ballot, and the round closes itself at zero
+  (the LED screen and control room trigger it; the database only allows it once the deadline
+  has passed). The winner is then revealed automatically. **+30 сек** adds time;
+  **Заврши веднаш** ends early.
+- Countdowns on the LED, admin and phones use the database clock, so a wrong laptop or phone
+  clock does not matter.
+- The LED screen plays original game-show style music while voting is open (synthesised in
+  the browser, no audio files), builds up in the last 30 s, ticks through the last 10 s, then
+  plays a "time's up" hit and a fanfare on the winner reveal. Browsers only allow sound after
+  a click: click anywhere on `/screen` (e.g. **Цел екран**) once. **Звук вклучен / исклучен**
+  (top right, hidden in fullscreen) mutes it; the choice is remembered on that laptop.
+
 ### Languages
 
 Public UI ships in **Macedonian, English, Swedish, Albanian and Turkish**
@@ -243,7 +259,7 @@ shows a warning.
    *Гласањето наскоро започнува*.
 3. **Organizer laptop/phone:** open `https://<domain>/admin` and log in. Confirm that the
    active round is **ПРОДУКЦИЈА** with 0 votes and the connection pill is green.
-4. **Open voting:** click **Започни гласање**. Phones switch to the ballot within a few
+4. **Open voting:** check the timer (2:00 by default), then click **Започни гласање**. Phones switch to the ballot within a few
    seconds; new scans see it immediately. Set the LED language under
    *Јазик на LED екранот* if the audience is international.
 5. **During voting:** bars, numbers and positions update on their own. Never refresh.

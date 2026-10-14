@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   poweredByHeader: false,
+  async redirects() {
+    // The site root is the guests' voting app.
+    return [{ source: "/", destination: "/vote", permanent: false }];
+  },
   async headers() {
     return [
       {

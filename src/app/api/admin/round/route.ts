@@ -5,7 +5,12 @@ import { getAdminContext } from "@/lib/admin-auth";
 import { isSameOrigin, json, readJson } from "@/lib/http";
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("open"), roundId: z.string().uuid() }),
+  z.object({
+    action: z.literal("open"),
+    roundId: z.string().uuid(),
+    durationSeconds: z.number().int().min(10).max(3600).nullable().optional(),
+  }),
+  z.object({ action: z.literal("extend"), roundId: z.string().uuid(), seconds: z.number().int().min(5).max(600) }),
   z.object({ action: z.literal("close"), roundId: z.string().uuid() }),
   z.object({
     action: z.literal("create"),
@@ -44,7 +49,10 @@ export async function POST(request: NextRequest) {
 
   const call =
     input.action === "open"
-      ? admin.client.rpc("admin_open_round", { p_round_id: input.roundId })
+      ? admin.client.rpc("admin_open_round", {
+          p_round_id: input.roundId,
+          p_duration_seconds: input.durationSeconds ?? null,
+        })
       : input.action === "close"
         ? admin.client.rpc("admin_close_round", { p_round_id: input.roundId })
         : input.action === "create"
@@ -53,7 +61,9 @@ export async function POST(request: NextRequest) {
             ? admin.client.rpc("admin_simulate_votes", { p_round_id: input.roundId, p_count: input.count })
             : input.action === "locale"
               ? admin.client.rpc("admin_set_screen_locale", { p_locale: input.locale })
-              : admin.client.rpc("admin_delete_rehearsal_round", { p_round_id: input.roundId });
+              : input.action === "extend"
+                ? admin.client.rpc("admin_extend_round", { p_round_id: input.roundId, p_seconds: input.seconds })
+                : admin.client.rpc("admin_delete_rehearsal_round", { p_round_id: input.roundId });
 
   const { data, error } = await call;
   if (error) {
