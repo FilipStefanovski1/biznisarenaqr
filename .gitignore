@@ -56,3 +56,7 @@ test-results/
 playwright-report/
 .impeccable/questions/
 .impeccable/hook.cache.json
+
+# Not part of this app (local notes)
+reports/
+research_notes/
