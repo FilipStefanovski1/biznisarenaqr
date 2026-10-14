@@ -369,12 +369,6 @@ function QrPanel({
   );
 }
 
-function fitSize(name: string, max: number, widthU: number): string {
-  // Fira Sans Condensed ExtraBold caps average ~0.56em per character.
-  const size = Math.min(max, widthU / Math.max(1, name.length * 0.58));
-  return `calc(var(--u) * ${size.toFixed(2)})`;
-}
-
 function TheCall({
   standings,
   roundId,
@@ -421,11 +415,6 @@ function TheCall({
     animate: { clipPath: "inset(0 0% 0 0)" },
     transition: { duration: 0.8, ease: EASE },
   };
-  const rise = (delay: number) => ({
-    initial: { y: "105%" },
-    animate: { y: "0%" },
-    transition: { duration: 0.8, delay, ease: EASE },
-  });
   const fade = (delay: number) => ({
     initial: { opacity: 0, y: 12 },
     animate: { opacity: 1, y: 0 },
@@ -448,12 +437,6 @@ function TheCall({
   }
 
   if (standings.isTie) {
-    // Tied winners share one size (set by the longest name) so neither looks bigger.
-    const longest = standings.leaders.reduce(
-      (a, l) => (l.name.length > a.length ? l.name : a),
-      "",
-    );
-    const tieSize = fitSize(longest, 7, 86 / standings.leaders.length - 4);
     return (
       <div
         data-testid="winner-tie"
@@ -474,25 +457,22 @@ function TheCall({
               data-testid={`winner-${w.id}`}
               className={styles.tieWinner}
             >
-              <motion.div {...fade(0.5 + i * 0.12)}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, y: 24 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{
+                  duration: 0.9,
+                  delay: 0.45 + i * 0.15,
+                  ease: EASE,
+                }}
+              >
                 <TeamLogo
                   contestant={w}
                   className={styles.tieLogo}
                   sizes="320px"
                 />
               </motion.div>
-              <div className={styles.mask}>
-                <motion.div
-                  className={styles.winnerName}
-                  style={{
-                    fontSize: tieSize,
-                    marginTop: 0,
-                  }}
-                  {...rise(0.6 + i * 0.12)}
-                >
-                  {w.name}
-                </motion.div>
-              </div>
+              <span className="sr-only">{w.name}</span>
               <motion.div
                 className={styles.winnerStats}
                 {...fade(0.9 + i * 0.12)}
@@ -529,27 +509,21 @@ function TheCall({
       </motion.div>
       <div className={styles.winnerLine}>
         <motion.div
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, delay: 0.35, ease: EASE }}
+          initial={{ opacity: 0, scale: 0.8, y: 24 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.35, ease: EASE }}
         >
           <TeamLogo
             contestant={w}
             className={styles.winnerLogo}
             priority
-            sizes="420px"
+            sizes="720px"
           />
         </motion.div>
-        <div className={styles.mask}>
-          <motion.div
-            className={styles.winnerName}
-            style={{ fontSize: fitSize(w.name, 11, 64), marginTop: 0 }}
-            data-testid="winner-name"
-            {...rise(0.45)}
-          >
-            {w.name}
-          </motion.div>
-        </div>
+        {/* The logo carries the name on screen; keep it for screen readers. */}
+        <span className="sr-only" data-testid="winner-name">
+          {w.name}
+        </span>
       </div>
       <motion.div className={styles.winnerSub} {...fade(0.85)}>
         {t.winnerLabel}

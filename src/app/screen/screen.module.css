@@ -693,7 +693,8 @@
 }
 
 .winnerLogo {
-  height: calc(var(--u) * 11);
+  height: calc(var(--u) * 17);
+  box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgba(2, 6, 20, 0.5);
 }
 
 .tieWinner {
@@ -703,6 +704,7 @@
 }
 
 .tieLogo {
-  height: calc(var(--u) * 6.5);
+  height: calc(var(--u) * 10);
   margin-bottom: calc(var(--u) * 1.4);
+  box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgba(2, 6, 20, 0.5);
 }

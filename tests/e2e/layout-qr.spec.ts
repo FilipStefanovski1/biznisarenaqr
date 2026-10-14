@@ -20,7 +20,7 @@ async function noScrollOrClipping(page: Page, selectors: string[]) {
         .map(({ s, r }) => `${s} @ ${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}`),
     );
     // Text that is cut off by overflow/ellipsis.
-    const truncated = [...document.querySelectorAll<HTMLElement>("[data-testid^=row-] span, [data-testid=winner-name]")]
+    const truncated = [...document.querySelectorAll<HTMLElement>("[data-testid^=row-] span")]
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
       .map((el) => el.textContent);
     return { scrollW: de.scrollWidth, scrollH: de.scrollHeight, vw, vh, outside, truncated };
