@@ -15,12 +15,33 @@ export type Contestant = {
   name: string;
   displayOrder: number;
   color: string;
+  /** Brand logo supplied by the organizers, shown on a tile in its own background colour. */
+  logo: { src: string; background: string; fit: "contain" | "cover" };
 };
 
 export const CONTESTANTS: readonly Contestant[] = [
-  { id: "yova", name: "YOVA", displayOrder: 1, color: "#EF6F5E" },
-  { id: "bubu-kosmetik", name: "BUBU KOSMETIK", displayOrder: 2, color: "#B98CF5" },
-  { id: "seed-of-life", name: "SEED OF LIFE", displayOrder: 3, color: "#3CCB8C" },
+  {
+    id: "yova",
+    name: "YOVA",
+    displayOrder: 1,
+    color: "#EF6F5E",
+    logo: { src: "/teams/yova.png", background: "#262626", fit: "cover" },
+  },
+  {
+    // id kept from the original listing so stored votes stay valid; display name is the brand's.
+    id: "bubu-kosmetik",
+    name: "BOOBOO",
+    displayOrder: 2,
+    color: "#B98CF5",
+    logo: { src: "/teams/booboo.png", background: "#FFFFFF", fit: "contain" },
+  },
+  {
+    id: "seed-of-life",
+    name: "SEED OF LIFE",
+    displayOrder: 3,
+    color: "#3CCB8C",
+    logo: { src: "/teams/seed-of-life.png", background: "#FFFFFF", fit: "contain" },
+  },
 ] as const;
 
 const BY_ID = new Map(CONTESTANTS.map((c) => [c.id, c]));

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExpireAtZero } from "@/components/ExpireAtZero";
 import { Logo } from "@/components/Logo";
+import { TeamLogo } from "@/components/TeamLogo";
 import { formatClock } from "@/lib/server-clock";
 import { useCountdown } from "@/lib/use-countdown";
 import { LOCALES, LOCALE_NAMES } from "@/i18n/messages";
@@ -347,6 +348,7 @@ export function AdminConsole({
                 <span style={{ background: row.color }} aria-hidden />
                 <div className="min-w-0 px-5 py-4">
                   <div className="flex items-center gap-3">
+                    <TeamLogo contestant={row} className="h-8" sizes="64px" />
                     <span className="font-display text-[26px] leading-none font-extrabold uppercase">
                       {row.name}
                     </span>

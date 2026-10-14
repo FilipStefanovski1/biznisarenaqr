@@ -10,6 +10,7 @@ import {
 import { ArrowRight, Check, Lock } from "@/components/icons";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo } from "@/components/Logo";
+import { TeamLogo } from "@/components/TeamLogo";
 import {
   formatNumber,
   formatPercentFor,
@@ -59,7 +60,8 @@ async function fetchVoterState(): Promise<VoterState | null> {
     const receivedAt = Date.now();
     if (!res.ok) return null;
     const parsed = voterStateSchema.safeParse(await res.json());
-    if (parsed.success) learnServerTime(parsed.data.state.serverTime, sentAt, receivedAt);
+    if (parsed.success)
+      learnServerTime(parsed.data.state.serverTime, sentAt, receivedAt);
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -464,8 +466,16 @@ function Ballot({ t, onPick }: { t: T; onPick: (c: Contestant) => void }) {
                 style={{ background: c.color }}
                 aria-hidden
               />
-              <span className="flex-1 py-5 pr-3 pl-9 font-display text-[clamp(28px,8.6vw,38px)] leading-[0.95] font-extrabold tracking-[-0.005em] uppercase">
-                {c.name}
+              <span className="flex min-w-0 flex-1 items-center gap-4 py-4 pr-3 pl-9">
+                <TeamLogo
+                  contestant={c}
+                  className="h-[clamp(52px,16vw,72px)]"
+                  priority
+                  sizes="96px"
+                />
+                <span className="min-w-0 font-display text-[clamp(26px,7.6vw,34px)] leading-[0.95] font-extrabold tracking-[-0.005em] uppercase">
+                  {c.name}
+                </span>
               </span>
               <span
                 className="mr-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-[3px] bg-white/[0.07] text-white transition-colors duration-200 group-hover:bg-blue group-hover:text-navy group-active:bg-blue group-active:text-navy"
@@ -544,12 +554,19 @@ function ConfirmSheet({
           aria-hidden
         />
         <div className="px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <p
-            className="font-display text-[clamp(38px,11.5vw,50px)] leading-[0.92] font-extrabold tracking-[-0.01em] uppercase"
-            data-testid="confirm-name"
-          >
-            {contestant.name}
-          </p>
+          <div className="flex items-center gap-4">
+            <TeamLogo
+              contestant={contestant}
+              className="h-16 ring-1 ring-navy/10"
+              sizes="120px"
+            />
+            <p
+              className="min-w-0 font-display text-[clamp(34px,10vw,46px)] leading-[0.92] font-extrabold tracking-[-0.01em] uppercase"
+              data-testid="confirm-name"
+            >
+              {contestant.name}
+            </p>
+          </div>
           <h2
             id="confirm-question"
             className="mt-6 text-[20px] leading-snug font-semibold text-balance"
@@ -636,12 +653,19 @@ function Receipt({ vote, t }: { vote: NonNullable<MyVote>; t: T }) {
                 style={{ background: contestant.color }}
                 aria-hidden
               />
-              <p
-                className="flex-1 px-5 py-5 font-display text-[36px] leading-none font-extrabold uppercase"
-                data-testid="my-choice"
-              >
-                {contestant.name}
-              </p>
+              <div className="flex flex-1 items-center gap-4 px-5 py-4">
+                <TeamLogo
+                  contestant={contestant}
+                  className="h-12 ring-1 ring-navy/10"
+                  sizes="96px"
+                />
+                <p
+                  className="min-w-0 font-display text-[32px] leading-none font-extrabold uppercase"
+                  data-testid="my-choice"
+                >
+                  {contestant.name}
+                </p>
+              </div>
             </div>
             <p className="flex items-start gap-2 border-t border-navy/10 py-3 pr-5 pl-9 text-[14px] leading-snug text-navy/70">
               <Lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -715,13 +739,16 @@ function Closed({
             <>
               <ul className="grid gap-4 px-5 pt-5">
                 {standings.leaders.map((w) => (
-                  <li key={w.id}>
-                    <div className="font-display text-[34px] leading-none font-extrabold uppercase">
-                      {w.name}
-                    </div>
-                    <div className="mt-1.5 font-display text-[18px] font-semibold text-gold-300 tabular">
-                      {formatNumber(w.votes, locale)} {t.votes(w.votes)} ·{" "}
-                      {formatPercentFor(w.percentage, locale)}
+                  <li key={w.id} className="flex items-center gap-4">
+                    <TeamLogo contestant={w} className="h-14" sizes="112px" />
+                    <div className="min-w-0">
+                      <div className="font-display text-[32px] leading-none font-extrabold uppercase">
+                        {w.name}
+                      </div>
+                      <div className="mt-1.5 font-display text-[18px] font-semibold text-gold-300 tabular">
+                        {formatNumber(w.votes, locale)} {t.votes(w.votes)} ·{" "}
+                        {formatPercentFor(w.percentage, locale)}
+                      </div>
                     </div>
                   </li>
                 ))}

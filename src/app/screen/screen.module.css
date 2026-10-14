@@ -158,7 +158,7 @@
 .row {
   position: relative;
   display: grid;
-  grid-template-columns: calc(var(--u) * 1.5) 1fr calc(var(--u) * 15);
+  grid-template-columns: calc(var(--u) * 1.5) auto 1fr calc(var(--u) * 15);
   align-items: stretch;
   min-height: calc(var(--u) * 10.4);
   background: var(--slab);
@@ -670,4 +670,39 @@
 
 :global(:fullscreen) .soundButton {
   display: none;
+}
+
+/* ---------- team logos ---------- */
+
+.rowLogo {
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--u) * 1.6);
+}
+
+.logoTile {
+  height: calc(var(--u) * 7);
+}
+
+.winnerLine {
+  margin-top: calc(var(--u) * 2.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 3);
+}
+
+.winnerLogo {
+  height: calc(var(--u) * 11);
+}
+
+.tieWinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tieLogo {
+  height: calc(var(--u) * 6.5);
+  margin-bottom: calc(var(--u) * 1.4);
 }

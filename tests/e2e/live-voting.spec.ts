@@ -82,7 +82,7 @@ test.describe("live voting end to end", () => {
 
     await guest.page.reload();
     await expect(guest.page.getByTestId("vote-success")).toBeVisible();
-    await expect(guest.page.getByTestId("my-choice")).toHaveText("BUBU KOSMETIK");
+    await expect(guest.page.getByTestId("my-choice")).toHaveText("BOOBOO");
     await expect(guest.page.getByTestId("vote-form")).toHaveCount(0);
     await guest.context.close();
   });

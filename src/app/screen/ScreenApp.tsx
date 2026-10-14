@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { Expand, SpeakerOff, SpeakerOn } from "@/components/icons";
 import { Logo } from "@/components/Logo";
+import { TeamLogo } from "@/components/TeamLogo";
 import {
   formatNumber,
   formatPercentFor,
@@ -251,6 +252,14 @@ function Board({
                 style={{ background: row.color }}
                 aria-hidden
               />
+              <div className={styles.rowLogo}>
+                <TeamLogo
+                  contestant={row}
+                  className={styles.logoTile}
+                  priority
+                  sizes="240px"
+                />
+              </div>
               <div className={styles.rowBody}>
                 <div className={styles.nameLine}>
                   <span className={styles.name}>{row.name}</span>
@@ -460,7 +469,18 @@ function TheCall({
         </motion.div>
         <div className={styles.tieList}>
           {standings.leaders.map((w, i) => (
-            <div key={w.id} data-testid={`winner-${w.id}`}>
+            <div
+              key={w.id}
+              data-testid={`winner-${w.id}`}
+              className={styles.tieWinner}
+            >
+              <motion.div {...fade(0.5 + i * 0.12)}>
+                <TeamLogo
+                  contestant={w}
+                  className={styles.tieLogo}
+                  sizes="320px"
+                />
+              </motion.div>
               <div className={styles.mask}>
                 <motion.div
                   className={styles.winnerName}
@@ -507,15 +527,29 @@ function TheCall({
       <motion.div style={{ width: "100%" }} {...wipe}>
         <div className={styles.band}>CONGRATULATIONS!</div>
       </motion.div>
-      <div className={styles.mask}>
+      <div className={styles.winnerLine}>
         <motion.div
-          className={styles.winnerName}
-          style={{ fontSize: fitSize(w.name, 12, 84) }}
-          data-testid="winner-name"
-          {...rise(0.45)}
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.35, ease: EASE }}
         >
-          {w.name}
+          <TeamLogo
+            contestant={w}
+            className={styles.winnerLogo}
+            priority
+            sizes="420px"
+          />
         </motion.div>
+        <div className={styles.mask}>
+          <motion.div
+            className={styles.winnerName}
+            style={{ fontSize: fitSize(w.name, 11, 64), marginTop: 0 }}
+            data-testid="winner-name"
+            {...rise(0.45)}
+          >
+            {w.name}
+          </motion.div>
+        </div>
       </div>
       <motion.div className={styles.winnerSub} {...fade(0.85)}>
         {t.winnerLabel}
